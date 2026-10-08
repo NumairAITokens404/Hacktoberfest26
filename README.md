@@ -29,7 +29,7 @@ Health data often lives in disconnected forms: lab values, lifestyle details, fo
 - **One connected assessment** — combines heart disease, diabetes, and overweight/obesity risk estimates into a clear health overview.
 - **Plain-language context** — uses Gemma to explain the assessment and suggest practical next steps.
 - **Food Lens** — extracts visible nutrition-label facts before generating personalized guidance from the completed health report.
-- **Research X-ray view** — presents local chest-X-ray model observations separately from the tabular health score.
+- **Research imaging workspace** — supports chest X-ray and 2D brain MRI classifiers while keeping their observations separate from the tabular health score.
 - **Portable reports** — exports the complete session as human-readable HTML or structured JSON.
 - **Privacy-minded sessions** — stores structured results in browser `localStorage`; uploaded image bytes are not persisted there.
 
@@ -37,7 +37,7 @@ Health data often lives in disconnected forms: lab values, lifestyle details, fo
 
 | Health profile | Your insights | Medical imaging | Food Lens |
 | --- | --- | --- | --- |
-| Capture clinical and lifestyle inputs expected by the three models. | Review individual risk estimates, a combined score, and a Gemma summary. | Add a de-identified chest X-ray for research-only observations. | Turn a nutrition label into extracted facts and health-aware guidance. |
+| Capture clinical and lifestyle inputs expected by the three models. | Review individual risk estimates, a combined score, and a Gemma summary. | Choose a de-identified chest X-ray or 2D brain MRI image for research-only observations. | Turn a nutrition label into extracted facts and health-aware guidance. |
 
 ## How it works
 
@@ -53,6 +53,8 @@ flowchart LR
     H[Nutrition label] --> G
     I[Chest X-ray] --> J[Local research model]
     J --> K[Separate image observations]
+    L[2D brain MRI] --> M[Brain MRI ResNet-18]
+    M --> K
 ```
 
 The tabular service returns heart disease, diabetes, and overweight/obesity scores on a `0–100` scale. Vitalis calculates the summary indicator as:
@@ -67,7 +69,7 @@ Diabetes and heart disease use positive-class probability. Obesity risk combines
 
 - **Web:** Next.js 16, React 19, TypeScript, Tailwind CSS, Recharts, Motion, and GSAP
 - **API layer:** Next route handlers for assessment, summary, food analysis, and imaging
-- **Model service:** FastAPI, pandas, scikit-learn/joblib, Pillow, PyTorch, and TorchXRayVision
+- **Model services:** FastAPI, pandas, scikit-learn/joblib, Pillow, PyTorch, TorchVision, TorchXRayVision, ONNX Runtime, and Hugging Face Hub
 - **Generative AI:** Gemma through the Gemini API
 - **Local runtime:** Vinext, Vite, and Wrangler
 
@@ -91,6 +93,8 @@ npm install
 
 python3 -m venv .venv
 .venv/bin/pip install -r models/requirements-xray.txt
+
+.venv/bin/pip install -r mri-api/requirements.txt
 ```
 
 ### 2. Configure the environment
@@ -105,7 +109,7 @@ Set your server-side Gemini credential in `.env`:
 GEMINI_API_KEY=your_api_key_here
 ```
 
-The checked-in defaults connect the web app to the local model service at `127.0.0.1:8000`. You can override `MODEL_API_URL`, `XRAY_API_URL`, or `GEMMA_FAST_MODEL` when needed. Never expose credentials in client-side code or commit your `.env` file.
+The checked-in defaults connect the web app to the local model service at `127.0.0.1:8000` and the brain MRI service at `127.0.0.1:8003`. You can override `MODEL_API_URL`, `XRAY_API_URL`, `MRI_API_URL`, or `GEMMA_FAST_MODEL` when needed. Never expose credentials in client-side code or commit your `.env` file.
 
 ### 3. Start both services
 
@@ -115,7 +119,13 @@ Terminal one—the local model service:
 .venv/bin/uvicorn models.server:app --host 127.0.0.1 --port 8000
 ```
 
-Terminal two—the web application:
+Terminal two—the brain MRI service:
+
+```bash
+PYTHONPATH=mri-api .venv/bin/uvicorn server:app --host 127.0.0.1 --port 8003
+```
+
+Terminal three—the web application:
 
 ```bash
 npm run dev
@@ -125,6 +135,8 @@ Open the local URL shown in the terminal. For a quick tour, choose **Explore wit
 
 > [!NOTE]
 > TorchXRayVision downloads and caches the approximately 28 MB `densenet121-res224-all` checkpoint the first time an X-ray is analyzed.
+
+> The brain MRI service uses the checked-in ONNX export of the `ThisenEkanayake/brain-tumor-detection` ResNet-18 checkpoint. It accepts exported 2D brain images, not DICOM studies or complete MRI series.
 
 For a lightweight tabular-model deployment, use `models/requirements.txt`. The
 X-ray dependencies are intentionally isolated in `models/requirements-xray.txt`
@@ -136,6 +148,14 @@ PyTorch. Deploy it as a separate Vercel project with that directory as the
 project root. Its public `/xray` endpoint should be used as the frontend's
 `XRAY_API_URL`.
 
+The deployable brain MRI service lives in `mri-api/`. Deploy it as another
+Vercel project with `mri-api` as the root directory, verify its `/health`
+endpoint, then set the main Vitalis project's environment variable to:
+
+```dotenv
+MRI_API_URL=https://your-mri-api.vercel.app/mri
+```
+
 ## API overview
 
 | Route | Purpose |
@@ -144,7 +164,7 @@ project root. Its public `/xray` endpoint should be used as the frontend's
 | `POST /api/summary` | Turns a profile and assessment into a concise Gemma health summary. |
 | `POST /api/food/extract` | Extracts only visible, validated nutrition facts from a label image. |
 | `POST /api/food/recommend` | Combines extracted label facts with the complete health report for personalized guidance. |
-| `POST /api/scan` | Sends a chest-X-ray image and separate health context to the research imaging service. |
+| `POST /api/scan` | Routes a chest X-ray or 2D brain MRI image plus separate health context to its modality-specific research service. |
 
 Image requests use `{ name, mimeType, data }`, where `data` is a base64 data URL. The UI accepts JPG, PNG, and WebP images up to 5 MB.
 
@@ -155,6 +175,7 @@ The Python service exposes:
 | `GET /health` | Confirms that the local service and its three tabular models are available. |
 | `POST /predict` | Returns `{ scores: { obesity, diabetes, heart_disease }, bmi }`. |
 | `POST /xray` | Returns research-only observations from a de-identified chest X-ray. |
+| `POST :8003/mri` | Returns four-class research-only observations from a de-identified 2D brain MRI image. |
 
 ## Food Lens pipeline
 
@@ -178,7 +199,8 @@ Structured session data is stored under `vitalis-session-report` in browser `loc
 
 - Remove names, IDs, and other personal identifiers before uploading any medical image.
 - Uploaded images are sent for analysis only after the user selects **Analyze**.
-- Raw X-ray outputs remain separate from the three-model combined health score.
+- Raw X-ray and MRI outputs remain separate from the three-model combined health score.
+- CT is shown only as planned work; no CT model or analysis endpoint is currently enabled.
 - Server errors expose a request ID for troubleshooting without returning credentials.
 - Keep Gemini and model-service credentials server-side.
 

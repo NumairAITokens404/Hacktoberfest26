@@ -6,10 +6,11 @@ The source model was trained on a BraTS2020-derived dataset and predicts four re
 
 ## Run
 
-```powershell
+```bash
 cd brain-mri-analysis
-C:\Siddu\H\gemma-food-smoke-test\.venv\Scripts\python.exe -m pip install -r requirements.txt
-C:\Siddu\H\gemma-food-smoke-test\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8003
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8003
 ```
 
 Open `http://127.0.0.1:8003` for the upload interface or `http://127.0.0.1:8003/docs` for the API contract.

@@ -22,6 +22,13 @@
   .sm-panel-item{font-size:clamp(2rem,11vw,3.25rem)!important}
 }
 
+.modality-picker{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:-4px 0 18px}
+.modality-picker button{min-height:48px;padding:9px 10px;border:1px solid var(--line);border-radius:7px;background:var(--input);color:var(--muted);font-size:11px;font-weight:600}
+.modality-picker button[aria-pressed=true]{background:var(--text);border-color:var(--text);color:var(--bg)}
+.modality-picker button:disabled{border-style:dashed;background:transparent}
+.modality-picker small{display:block;margin-top:3px;font-size:9px;font-weight:400}
+@media(max-width:430px){.modality-picker{grid-template-columns:1fr}.modality-picker button{min-height:42px}}
+
 .report-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:24px;padding-top:22px;border-top:1px solid var(--line)}
 .report-actions .secondary{display:inline-flex;align-items:center;justify-content:center;gap:9px;padding:13px 18px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);font-size:12px;font-weight:600}
 .saved-note{display:flex;align-items:center;gap:7px;margin-top:12px!important;font-size:11px!important;color:var(--muted)}
